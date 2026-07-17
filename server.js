@@ -112,14 +112,15 @@ const initDatabase = () => {
 // 1. Admin Login (ከ admins ሰንጠረዥ ያረጋግጣል)
 app.post('/api/login', (req, res) => {
     const { username, password_hash } = req.body;
-    db.query('SELECT * FROM admins WHERE username = ? AND password_hash = ?', [username, password_hash], (err, results) => {
+    // እዚህ ጋ admins የነበረውን hadmins አድርገነዋል
+    db.query('SELECT * FROM hadmins WHERE username = ? AND password_hash = ?', [username, password_hash], (err, results) => {
         if (err) return res.status(500).json({ error: err.message });
         if (results.length > 0) {
             res.json({ message: 'Login successful', user: results[0] });
         } else {
             res.status(401).json({ message: 'የተጠቃሚ ስም ወይም የይለፍ ቃል አልተገኘም!' });
         }
-    });
+    }); // ይቺን መዝጊያ ቅንፍ መኖሯን አረጋግጥ
 });
 
 // 2. Register Woreda Admin (የክልል አድሚን ብቻ ይመዘግባል)
