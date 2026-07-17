@@ -335,6 +335,11 @@ app.post('/api/offices', (req, res) => {
         res.json({ message: 'Office added successfully' });
     });
 });
+// ይህ ኮድ ሰርቨሩ ሲነሳ አድሚን ይፈጥራል
+db.query("INSERT IGNORE INTO hadmins (username, password_hash, full_name, role) VALUES ('ahmed', '123456', 'አህመድ', 'Region_Admin')", (err, result) => {
+    if (err) console.log("አድሚን መፍጠር አልተቻለም:", err);
+    else console.log("አድሚን ተፈጠረ (ወይም አስቀድሞ አለ)!");
+});
 
 // Start Server
 const PORT = process.env.PORT || 5000;
