@@ -36,7 +36,7 @@ const initDatabase = () => {
     );
   `;
 
-  // የ አድሚኖች ሰንጠረዥ (የድሮው users)
+  // የአድሚኖች ሰንጠረዥ
   const createAdminsTable = `
     CREATE TABLE IF NOT EXISTS admins (
       id INT AUTO_INCREMENT PRIMARY KEY,
@@ -135,12 +135,11 @@ app.post('/api/register-admin', (req, res) => {
     });
 });
 
-// 3. [አዲስ] የወረዳ አድሚን መረጃ ማስተካከያ (የክልል አድሚን በስህተት የገባን ለማስተካከል)
+// 3. የወረዳ አድሚን መረጃ ማስተካከያ (የክልል አድሚን በስህተት የገባን ለማስተካከል)
 app.put('/api/admins/:id', (req, res) => {
     const adminId = req.params.id;
     const { username, password_hash, full_name, woreda_id, current_user_role } = req.body;
 
-    // የክልል አድሚን መሆኑን ማረጋገጫ
     if (current_user_role !== 'Region_Admin') {
         return res.status(403).json({ error: "የአድሚን መረጃ ማስተካከል የሚችለው የክልል አድሚን ብቻ ነው!" });
     }
@@ -155,12 +154,11 @@ app.put('/api/admins/:id', (req, res) => {
     );
 });
 
-// 4. [አዲስ] የወረዳ አድሚን መሰረዣ (ሥራ ሲለቅ ወይም ሲሞት ከሲስተም ለማውጣት)
+// 4. የወረዳ አድሚን መሰረዣ (ሥራ ሲለቅ ወይም ሲሞት ከሲስተም ለማውጣት)
 app.delete('/api/admins/:id', (req, res) => {
     const adminId = req.params.id;
-    const { current_user_role } = req.body; // የጠያቂው ሚና
+    const { current_user_role } = req.body;
 
-    // የክልል አድሚን መሆኑን ማረጋገጫ
     if (current_user_role !== 'Region_Admin') {
         return res.status(403).json({ error: "የወረዳ አድሚንን መሰረዝ የሚችለው የክልል አድሚን ብቻ ነው!" });
     }
@@ -179,7 +177,7 @@ app.get('/api/admins', (req, res) => {
     });
 });
 
-// 5. Add Sector
+// 5. Add Sector (dropdown አጠገብ ለሚቀመጠው "Add Sector" ቁልፍ)
 app.post('/api/sectors', (req, res) => {
     const { name } = req.body;
     db.query('INSERT INTO sectors (name) VALUES (?)', [name], (err, results) => {
@@ -196,7 +194,7 @@ app.get('/api/sectors', (req, res) => {
     });
 });
 
-// 6. Get Employees (Filtering)
+// 6. Get Employees (የወረዳ አድሚን የራሱን ብቻ፣ የክልል ሁሉንም ያያል)
 app.get('/api/employees', (req, res) => {
     const { woreda_id, role } = req.query;
     let query = 'SELECT * FROM employees';
@@ -216,7 +214,7 @@ app.get('/api/employees', (req, res) => {
     });
 });
 
-// 7. Add Employee
+// 7. Add Employee (የወረዳ አድሚን ብቻ ሰራተኛ ይመዘግባል)
 app.post('/api/employees', (req, res) => {
     const { first_name, last_name, job_title, office_id, woreda_id, employment_type, basic_salary, status, role } = req.body;
     
@@ -231,7 +229,7 @@ app.post('/api/employees', (req, res) => {
     });
 });
 
-// 8. ፔሮል ማዘጋጀት
+// 8. ፔሮል ማዘጋጀት (የወረዳውም ሆነ የክልሉ አድሚን Draft ወይም Final ማድረግ ይችላሉ)
 app.post('/api/payroll/prepare', (req, res) => {
     const { woreda_id, month, year, user_id, status } = req.body; 
     const finalStatus = status || 'Draft';
@@ -247,7 +245,7 @@ app.post('/api/payroll/prepare', (req, res) => {
     );
 });
 
-// 9. ፔሮልን ማጽደቅ
+// 9. ፔሮልን ማጽደቅ (ከ Draft ወደ Final መቀየር)
 app.post('/api/payroll/approve', (req, res) => {
     const { payroll_id, user_id } = req.body;
     db.query(
@@ -278,9 +276,19 @@ app.post('/api/payroll/reject-to-draft', (req, res) => {
     );
 });
 
-// Fetch Woredas
+// 11. Fetch Woredas (የወረዳ አድሚን ሲገባ የራሱን ወረዳ ብቻ በ Dropdown እንዲያይ የተስተካከለ)
 app.get('/api/woredas', (req, res) => {
-    db.query('SELECT * FROM woredas', (err, results) => {
+    const { woreda_id, role } = req.query;
+
+    let query = 'SELECT * FROM woredas';
+    let params = [];
+
+    if (role === 'Woreda_Admin' && woreda_id) {
+        query += ' WHERE id = ?';
+        params.push(woreda_id);
+    }
+
+    db.query(query, params, (err, results) => {
         if (err) return res.status(500).json({ error: err.message });
         res.json(results);
     });
@@ -295,15 +303,21 @@ app.post('/api/woredas', (req, res) => {
     });
 });
 
-// Fetch Offices
+// 12. Fetch Offices (የወረዳ አድሚን ሲገባ የራሱን ወረዳ ፅህፈት ቤቶች ብቻ እንዲያይ የተስተካከለ)
 app.get('/api/offices', (req, res) => {
-    const { woreda_id } = req.query;
+    const { woreda_id, role } = req.query;
+    
     let query = 'SELECT * FROM offices';
     let params = [];
-    if (woreda_id) {
+
+    if (role === 'Woreda_Admin' && woreda_id) {
+        query += ' WHERE woreda_id = ?';
+        params.push(woreda_id);
+    } else if (woreda_id) {
         query += ' WHERE woreda_id = ?';
         params.push(woreda_id);
     }
+
     db.query(query, params, (err, results) => {
         if (err) return res.status(500).json({ error: err.message });
         res.json(results);
