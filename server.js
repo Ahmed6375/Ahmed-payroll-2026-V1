@@ -21,8 +21,100 @@ db.connect(err => {
         console.error('Database connection failed:', err);
     } else {
         console.log('Successfully connected to the central SQL database!');
+        initDatabase(); // ግንኙነቱ ሲሳካ ሰንጠረዦቹን ለመፍጠር ይጠራል
     }
 });
+
+// ሁሉንም የ Database ሰንጠረዦች በራስ-ሰር መፍጠሪያ ኮድ
+const initDatabase = () => {
+  // 1. Woredas Table
+  const createWoredasTable = `
+    CREATE TABLE IF NOT EXISTS woredas (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      allowed_budget_year INT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+  `;
+
+  // 2. Users Table
+  const createUsersTable = `
+    CREATE TABLE IF NOT EXISTS users (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      username VARCHAR(255) UNIQUE NOT NULL,
+      password_hash VARCHAR(255) NOT NULL,
+      full_name VARCHAR(255),
+      role VARCHAR(100),
+      woreda_id INT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+  `;
+
+  // 3. Sectors Table
+  const createSectorsTable = `
+    CREATE TABLE IF NOT EXISTS sectors (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+  `;
+
+  // 4. Offices Table
+  const createOfficesTable = `
+    CREATE TABLE IF NOT EXISTS offices (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      code VARCHAR(100),
+      woreda_id INT,
+      sector_id INT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+  `;
+
+  // 5. Employees Table (ከ salary እና status ጋር)
+  const createEmployeesTable = `
+    CREATE TABLE IF NOT EXISTS employees (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      first_name VARCHAR(255) NOT NULL,
+      last_name VARCHAR(255) NOT NULL,
+      job_title VARCHAR(255),
+      office_id INT,
+      woreda_id INT,
+      employment_type VARCHAR(100),
+      basic_salary DECIMAL(10, 2),
+      status VARCHAR(100) DEFAULT 'Active',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+  `;
+
+  // ሰንጠረዦቹን በቅደም ተከተል መፍጠር
+  db.query(createWoredasTable, (err) => {
+    if (err) console.error("woredas መፍጠር አልተቻለም:", err.message);
+    else console.log("woredas ሰንጠረዥ ዝግጁ ነው!");
+  });
+
+  db.query(createUsersTable, (err) => {
+    if (err) console.error("users መፍጠር አልተቻለም:", err.message);
+    else console.log("users ሰንጠረዥ ዝግጁ ነው!");
+  });
+
+  db.query(createSectorsTable, (err) => {
+    if (err) console.error("sectors መፍጠር አልተቻለም:", err.message);
+    else console.log("sectors ሰንጠረዥ ዝግጁ ነው!");
+  });
+
+  db.query(createOfficesTable, (err) => {
+    if (err) console.error("offices መፍጠር አልተቻለም:", err.message);
+    else console.log("offices ሰንጠረዥ ዝግጁ ነው!");
+  });
+
+  db.query(createEmployeesTable, (err) => {
+    if (err) console.error("employees መፍጠር አልተቻለም:", err.message);
+    else console.log("employees ሰንጠረዥ ዝግጁ ነው! 🎉");
+  });
+};
+
+// ------------------- API ROUTES -------------------
 
 // User Login
 app.post('/api/login', (req, res) => {
@@ -34,23 +126,6 @@ app.post('/api/login', (req, res) => {
         } else {
             res.status(401).json({ message: 'የተጠቃሚ ስም ወይም የይለፍ ቃል አልተገኘም!' });
         }
-    });
-});
-
-// Fetch Woredas
-app.get('/api/woredas', (req, res) => {
-    db.query('SELECT * FROM woredas', (err, results) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(results);
-    });
-});
-
-// Add Woreda
-app.post('/api/woredas', (req, res) => {
-    const { name, allowed_budget_year } = req.body;
-    db.query('INSERT INTO woredas (name, allowed_budget_year) VALUES (?, ?)', [name, allowed_budget_year], (err, results) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json({ message: 'Woreda added successfully', id: results.insertId });
     });
 });
 
@@ -77,6 +152,23 @@ app.post('/api/register-admin', (req, res) => {
     [username, password_hash, full_name, woreda_id], (err, results) => {
         if (err) return res.status(500).json({ error: err.message });
         res.json({ message: 'Woreda Admin registered successfully' });
+    });
+});
+
+// Fetch Woredas
+app.get('/api/woredas', (req, res) => {
+    db.query('SELECT * FROM woredas', (err, results) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(results);
+    });
+});
+
+// Add Woreda
+app.post('/api/woredas', (req, res) => {
+    const { name, allowed_budget_year } = req.body;
+    db.query('INSERT INTO woredas (name, allowed_budget_year) VALUES (?, ?)', [name, allowed_budget_year], (err, results) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ message: 'Woreda added successfully', id: results.insertId });
     });
 });
 
@@ -122,6 +214,7 @@ app.post('/api/employees', (req, res) => {
     });
 });
 
+// Start Server
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
     console.log(`Backend server running on port ${PORT}`);
