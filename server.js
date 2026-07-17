@@ -9,11 +9,11 @@ app.use(cors());
 
 // MySQL Connection Setting
 const db = mysql.createConnection({
-    host: process.env.DB_HOST || 'localhost',
-    user: process.env.DB_USER || 'root',
-    password: process.env.DB_PASSWORD || '',
-    database: process.env.DB_NAME || 'ahmed_woredas_payroll',
-    port: process.env.DB_PORT || 3306
+    host: process.env.DB_HOST || 'mysql-8dc52d0-ahmedalimed1405-ca35.b.aivencloud.com',
+    user: process.env.DB_USER || 'avnadmin',
+    password: process.env.DB_PASSWORD || 'AVNS_wCopvpSt0u7NgymQ_Gg',
+    database: process.env.DB_NAME || 'defaultdb',
+    port: process.env.DB_PORT || 21633
 });
 
 db.connect(err => {
