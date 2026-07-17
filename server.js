@@ -7,7 +7,7 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
-// MySQL Cloud/Local Connection Setting
+// MySQL Connection Setting
 const db = mysql.createConnection({
     host: process.env.DB_HOST || 'localhost',
     user: process.env.DB_USER || 'root',
@@ -21,13 +21,12 @@ db.connect(err => {
         console.error('Database connection failed:', err);
     } else {
         console.log('Successfully connected to the central SQL database!');
-        initDatabase(); // ግንኙነቱ ሲሳካ ሰንጠረዦቹን ለመፍጠር ይጠራል
+        initDatabase();
     }
 });
 
-// ሁሉንም የ Database ሰንጠረዦች በራስ-ሰር መፍጠሪያ ኮድ
+// ሁሉንም ሰንጠረዦች በራስ-ሰር መፍጠሪያ (users ወደ admins ተቀይሯል)
 const initDatabase = () => {
-  // 1. Woredas Table
   const createWoredasTable = `
     CREATE TABLE IF NOT EXISTS woredas (
       id INT AUTO_INCREMENT PRIMARY KEY,
@@ -37,29 +36,27 @@ const initDatabase = () => {
     );
   `;
 
-  // 2. Users Table
-  const createUsersTable = `
-    CREATE TABLE IF NOT EXISTS users (
+  // የ አድሚኖች ሰንጠረዥ (የድሮው users)
+  const createAdminsTable = `
+    CREATE TABLE IF NOT EXISTS admins (
       id INT AUTO_INCREMENT PRIMARY KEY,
       username VARCHAR(255) UNIQUE NOT NULL,
       password_hash VARCHAR(255) NOT NULL,
       full_name VARCHAR(255),
-      role VARCHAR(100),
+      role VARCHAR(100), -- 'Region_Admin' ወይም 'Woreda_Admin'
       woreda_id INT,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
   `;
 
-  // 3. Sectors Table
   const createSectorsTable = `
     CREATE TABLE IF NOT EXISTS sectors (
       id INT AUTO_INCREMENT PRIMARY KEY,
-      name VARCHAR(255) NOT NULL,
+      name VARCHAR(255) NOT NULL UNIQUE,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
   `;
 
-  // 4. Offices Table
   const createOfficesTable = `
     CREATE TABLE IF NOT EXISTS offices (
       id INT AUTO_INCREMENT PRIMARY KEY,
@@ -71,7 +68,6 @@ const initDatabase = () => {
     );
   `;
 
-  // 5. Employees Table (ከ salary እና status ጋር)
   const createEmployeesTable = `
     CREATE TABLE IF NOT EXISTS employees (
       id INT AUTO_INCREMENT PRIMARY KEY,
@@ -87,45 +83,108 @@ const initDatabase = () => {
     );
   `;
 
-  // ሰንጠረዦቹን በቅደም ተከተል መፍጠር
-  db.query(createWoredasTable, (err) => {
-    if (err) console.error("woredas መፍጠር አልተቻለም:", err.message);
-    else console.log("woredas ሰንጠረዥ ዝግጁ ነው!");
-  });
+  const createPayrollTable = `
+    CREATE TABLE IF NOT EXISTS payrolls (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      woreda_id INT NOT NULL,
+      month VARCHAR(50) NOT NULL,
+      year INT NOT NULL,
+      status VARCHAR(50) DEFAULT 'Draft',
+      prepared_by INT,
+      approved_by INT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+  `;
 
-  db.query(createUsersTable, (err) => {
-    if (err) console.error("users መፍጠር አልተቻለም:", err.message);
-    else console.log("users ሰንጠረዥ ዝግጁ ነው!");
-  });
-
-  db.query(createSectorsTable, (err) => {
-    if (err) console.error("sectors መፍጠር አልተቻለም:", err.message);
-    else console.log("sectors ሰንጠረዥ ዝግጁ ነው!");
-  });
-
-  db.query(createOfficesTable, (err) => {
-    if (err) console.error("offices መፍጠር አልተቻለም:", err.message);
-    else console.log("offices ሰንጠረዥ ዝግጁ ነው!");
-  });
-
-  db.query(createEmployeesTable, (err) => {
-    if (err) console.error("employees መፍጠር አልተቻለም:", err.message);
-    else console.log("employees ሰንጠረዥ ዝግጁ ነው! 🎉");
+  db.query(createWoredasTable, (err) => { if (err) console.error("woredas err:", err.message); });
+  db.query(createAdminsTable, (err) => { if (err) console.error("admins err:", err.message); });
+  db.query(createSectorsTable, (err) => { if (err) console.error("sectors err:", err.message); });
+  db.query(createOfficesTable, (err) => { if (err) console.error("offices err:", err.message); });
+  db.query(createEmployeesTable, (err) => { if (err) console.error("employees err:", err.message); });
+  db.query(createPayrollTable, (err) => { 
+    if (err) console.error("payroll err:", err.message); 
+    else console.log("ሁሉም የዳታቤዝ ሰንጠረዦች (ከadmins ጋር) ዝግጁ ናቸው! 🎉");
   });
 };
 
 // ------------------- API ROUTES -------------------
 
-// User Login
+// 1. Admin Login (ከ admins ሰንጠረዥ ያረጋግጣል)
 app.post('/api/login', (req, res) => {
     const { username, password_hash } = req.body;
-    db.query('SELECT * FROM users WHERE username = ? AND password_hash = ?', [username, password_hash], (err, results) => {
+    db.query('SELECT * FROM admins WHERE username = ? AND password_hash = ?', [username, password_hash], (err, results) => {
         if (err) return res.status(500).json({ error: err.message });
         if (results.length > 0) {
             res.json({ message: 'Login successful', user: results[0] });
         } else {
             res.status(401).json({ message: 'የተጠቃሚ ስም ወይም የይለፍ ቃል አልተገኘም!' });
         }
+    });
+});
+
+// 2. Register Woreda Admin (የክልል አድሚን ብቻ ይመዘግባል)
+app.post('/api/register-admin', (req, res) => {
+    const { username, password_hash, full_name, woreda_id, role } = req.body;
+    if (role !== 'Region_Admin') {
+        return res.status(403).json({ error: "የወረዳ አድሚኖችን መመዝገብ የሚችለው የክልል አድሚን ብቻ ነው!" });
+    }
+    db.query('INSERT INTO admins (username, password_hash, full_name, role, woreda_id) VALUES (?, ?, ?, "Woreda_Admin", ?)', 
+    [username, password_hash, full_name, woreda_id], (err, results) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ message: 'Woreda Admin registered successfully' });
+    });
+});
+
+// 3. [አዲስ] የወረዳ አድሚን መረጃ ማስተካከያ (የክልል አድሚን በስህተት የገባን ለማስተካከል)
+app.put('/api/admins/:id', (req, res) => {
+    const adminId = req.params.id;
+    const { username, password_hash, full_name, woreda_id, current_user_role } = req.body;
+
+    // የክልል አድሚን መሆኑን ማረጋገጫ
+    if (current_user_role !== 'Region_Admin') {
+        return res.status(403).json({ error: "የአድሚን መረጃ ማስተካከል የሚችለው የክልል አድሚን ብቻ ነው!" });
+    }
+
+    db.query(
+        'UPDATE admins SET username = ?, password_hash = ?, full_name = ?, woreda_id = ? WHERE id = ?',
+        [username, password_hash, full_name, woreda_id, adminId],
+        (err, results) => {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ message: 'የወረዳ አድሚን መረጃ በተሳካ ሁኔታ ተስተካክሏል!' });
+        }
+    );
+});
+
+// 4. [አዲስ] የወረዳ አድሚን መሰረዣ (ሥራ ሲለቅ ወይም ሲሞት ከሲስተም ለማውጣት)
+app.delete('/api/admins/:id', (req, res) => {
+    const adminId = req.params.id;
+    const { current_user_role } = req.body; // የጠያቂው ሚና
+
+    // የክልል አድሚን መሆኑን ማረጋገጫ
+    if (current_user_role !== 'Region_Admin') {
+        return res.status(403).json({ error: "የወረዳ አድሚንን መሰረዝ የሚችለው የክልል አድሚን ብቻ ነው!" });
+    }
+
+    db.query('DELETE FROM admins WHERE id = ?', [adminId], (err, results) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ message: 'የወረዳው አድሚን ከሲስተሙ ላይ ሙሉ በሙሉ ተሰርዟል!' });
+    });
+});
+
+// Fetch All Admins (ለክልል አድሚን ማሳያ)
+app.get('/api/admins', (req, res) => {
+    db.query('SELECT id, username, full_name, role, woreda_id, created_at FROM admins', (err, results) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(results);
+    });
+});
+
+// 5. Add Sector
+app.post('/api/sectors', (req, res) => {
+    const { name } = req.body;
+    db.query('INSERT INTO sectors (name) VALUES (?)', [name], (err, results) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ message: 'Sector added successfully', id: results.insertId });
     });
 });
 
@@ -137,22 +196,86 @@ app.get('/api/sectors', (req, res) => {
     });
 });
 
-// Fetch Woreda Admins
-app.get('/api/admins', (req, res) => {
-    db.query('SELECT id, username, full_name, role, woreda_id FROM users WHERE role = "Woreda_Admin"', (err, results) => {
+// 6. Get Employees (Filtering)
+app.get('/api/employees', (req, res) => {
+    const { woreda_id, role } = req.query;
+    let query = 'SELECT * FROM employees';
+    let params = [];
+
+    if (role === 'Woreda_Admin' && woreda_id) {
+        query += ' WHERE woreda_id = ?';
+        params.push(woreda_id);
+    } else if (woreda_id) {
+        query += ' WHERE woreda_id = ?';
+        params.push(woreda_id);
+    }
+
+    db.query(query, params, (err, results) => {
         if (err) return res.status(500).json({ error: err.message });
         res.json(results);
     });
 });
 
-// Register Woreda Admin
-app.post('/api/register-admin', (req, res) => {
-    const { username, password_hash, full_name, woreda_id } = req.body;
-    db.query('INSERT INTO users (username, password_hash, full_name, role, woreda_id) VALUES (?, ?, ?, "Woreda_Admin", ?)', 
-    [username, password_hash, full_name, woreda_id], (err, results) => {
+// 7. Add Employee
+app.post('/api/employees', (req, res) => {
+    const { first_name, last_name, job_title, office_id, woreda_id, employment_type, basic_salary, status, role } = req.body;
+    
+    if (role === 'Region_Admin') {
+         return res.status(403).json({ error: "ሰራተኞችን መመዝገብ የሚችለው የወረዳ አድሚን ብቻ ነው!" });
+    }
+
+    db.query('INSERT INTO employees (first_name, last_name, job_title, office_id, woreda_id, employment_type, basic_salary, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', 
+    [first_name, last_name, job_title, office_id, woreda_id, employment_type, basic_salary, status], (err, results) => {
         if (err) return res.status(500).json({ error: err.message });
-        res.json({ message: 'Woreda Admin registered successfully' });
+        res.json({ message: 'Employee added successfully', id: results.insertId });
     });
+});
+
+// 8. ፔሮል ማዘጋጀት
+app.post('/api/payroll/prepare', (req, res) => {
+    const { woreda_id, month, year, user_id, status } = req.body; 
+    const finalStatus = status || 'Draft';
+    const approvedBy = (finalStatus === 'Final') ? user_id : null;
+
+    db.query(
+        'INSERT INTO payrolls (woreda_id, month, year, status, prepared_by, approved_by) VALUES (?, ?, ?, ?, ?, ?)',
+        [woreda_id, month, year, finalStatus, user_id, approvedBy],
+        (err, results) => {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ message: `ፔሮል በ ${finalStatus} ደረጃ በተሳካ ሁኔታ ተዘጋጅቷል!`, id: results.insertId });
+        }
+    );
+});
+
+// 9. ፔሮልን ማጽደቅ
+app.post('/api/payroll/approve', (req, res) => {
+    const { payroll_id, user_id } = req.body;
+    db.query(
+        'UPDATE payrolls SET status = "Final", approved_by = ? WHERE id = ?',
+        [user_id, payroll_id],
+        (err, results) => {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ message: 'ፔሮሉ ጸድቋል (Finalized ሆኗል)!' });
+        }
+    );
+});
+
+// 10. የጸደቀውን ፔሮል ወደ Draft መመለስ (የክልል አድሚን ብቻ!)
+app.post('/api/payroll/reject-to-draft', (req, res) => {
+    const { payroll_id, role } = req.body;
+
+    if (role !== 'Region_Admin') {
+        return res.status(403).json({ error: "የጸደቀውን ፔሮል ወደ ኃላ (Draft) መመለስ የሚችለው የክልል አድሚን ብቻ ነው!" });
+    }
+
+    db.query(
+        'UPDATE payrolls SET status = "Draft", approved_by = NULL WHERE id = ?',
+        [payroll_id],
+        (err, results) => {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ message: 'የጸደቀው ፔሮል በተሳካ ሁኔታ ወደ Draft ተመልሷል!' });
+        }
+    );
 });
 
 // Fetch Woredas
@@ -193,24 +316,6 @@ app.post('/api/offices', (req, res) => {
     db.query('INSERT INTO offices (name, code, woreda_id, sector_id) VALUES (?, ?, ?, ?)', [name, code, woreda_id, sector_id], (err, results) => {
         if (err) return res.status(500).json({ error: err.message });
         res.json({ message: 'Office added successfully' });
-    });
-});
-
-// Fetch Employees
-app.get('/api/employees', (req, res) => {
-    db.query('SELECT * FROM employees', (err, results) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json(results);
-    });
-});
-
-// Add Employee
-app.post('/api/employees', (req, res) => {
-    const { first_name, last_name, job_title, office_id, woreda_id, employment_type, basic_salary, status } = req.body;
-    db.query('INSERT INTO employees (first_name, last_name, job_title, office_id, woreda_id, employment_type, basic_salary, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', 
-    [first_name, last_name, job_title, office_id, woreda_id, employment_type, basic_salary, status], (err, results) => {
-        if (err) return res.status(500).json({ error: err.message });
-        res.json({ message: 'Employee added successfully' });
     });
 });
 
